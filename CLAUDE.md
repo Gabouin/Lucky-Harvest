@@ -43,7 +43,7 @@ ou retirer un symbole) → le quota augmente → manche suivante. Game over si l
 - Aucun backend ni dépendance réseau pour jouer (tout tourne côté client).
 
 ## État d'avancement  (à mettre à jour à chaque session)
-- [ ] Setup projet + rendu pixel + grille vide 4x4
+- [x] Setup projet + rendu pixel + grille vide 4x4
 - [ ] Moteur de résolution + 12 symboles starter (testé headless)
 - [ ] Boucle jouable de bout en bout (MVP)
 - [ ] Contenu (≈35 symboles, raretés, effets temporels, retrait en boutique)
