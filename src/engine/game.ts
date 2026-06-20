@@ -1,13 +1,25 @@
-import { GRID_SIZE, QUOTAS, SPINS_PER_ROUND, STARTING_COINS, STARTING_RESERVE } from '../data/config';
-import { SYMBOL_MAP } from '../data/symbols';
-import type { GridState, ResolutionResult } from '../data/types';
+import {
+  GRID_SIZE, QUOTAS, SPINS_PER_ROUND, STARTING_COINS, STARTING_RESERVE,
+  SHOP_OFFER_SIZE, BUYS_PER_SHOP, REMOVALS_PER_SHOP, RARITY_WEIGHTS, COSTS,
+  FINAL_ROUND, MIN_RESERVE,
+} from '../data/config';
+import { SYMBOLS, SYMBOL_MAP } from '../data/symbols';
+import type { GameSymbol, GridState, ResolutionResult } from '../data/types';
+
+export interface ShopItem {
+  symbolId: string;
+  cost: number;
+}
 
 export interface GameState {
   coins: number;
-  reserve: string[];   // ids des symboles du joueur
-  round: number;       // 1-indexé
+  reserve: string[];     // ids des symboles du joueur
+  round: number;         // 1-indexé
   spinsLeft: number;
-  phase: 'idle' | 'gameover';
+  phase: 'idle' | 'shop' | 'gameover' | 'victory';
+  shopOffer: ShopItem[]; // vide hors de la phase 'shop'
+  buysLeft: number;
+  removalsLeft: number;
 }
 
 // mulberry32 — PRNG seedable, rapide, qualité suffisante pour un jeu de jam
@@ -31,6 +43,17 @@ function sampleN(arr: readonly string[], n: number, rng: () => number): string[]
   return copy.slice(0, n);
 }
 
+// Weighted pick sans remise depuis un pool de symboles
+function weightedPick(pool: GameSymbol[], rng: () => number): { picked: GameSymbol; rest: GameSymbol[] } {
+  const total = pool.reduce((sum, s) => sum + (RARITY_WEIGHTS[s.rarity] ?? 1), 0);
+  let r = rng() * total;
+  for (let i = 0; i < pool.length; i++) {
+    r -= RARITY_WEIGHTS[pool[i].rarity] ?? 1;
+    if (r <= 0) return { picked: pool[i], rest: pool.filter((_, j) => j !== i) };
+  }
+  return { picked: pool[pool.length - 1], rest: pool.slice(0, -1) };
+}
+
 export function createGame(seed?: number): { state: GameState; rng: () => number } {
   return {
     state: {
@@ -39,6 +62,9 @@ export function createGame(seed?: number): { state: GameState; rng: () => number
       round: 1,
       spinsLeft: SPINS_PER_ROUND,
       phase: 'idle',
+      shopOffer: [],
+      buysLeft: 0,
+      removalsLeft: 0,
     },
     rng: createRng(seed ?? Date.now()),
   };
@@ -46,13 +72,10 @@ export function createGame(seed?: number): { state: GameState; rng: () => number
 
 export function spinGrid(reserve: readonly string[], rng: () => number): GridState {
   const CELLS = GRID_SIZE * GRID_SIZE;
-
-  // 16 emplacements : symboles tirés + cases vides
   const slots: (string | null)[] = Array<string | null>(CELLS).fill(null);
   const source = reserve.length <= CELLS ? [...reserve] : sampleN(reserve, CELLS, rng);
   for (let i = 0; i < source.length; i++) slots[i] = source[i];
 
-  // Fisher-Yates sur les 16 emplacements → placement aléatoire dans toute la grille
   for (let i = CELLS - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [slots[i], slots[j]] = [slots[j], slots[i]];
@@ -78,23 +101,67 @@ export function applyResolution(state: GameState, result: ResolutionResult): Gam
   };
 }
 
-export function endRound(state: GameState): { state: GameState; outcome: 'continue' | 'gameover' } {
+export function endRound(state: GameState): {
+  state: GameState;
+  outcome: 'continue' | 'gameover' | 'victory';
+} {
   const idx = Math.min(state.round - 1, QUOTAS.length - 1);
   const quota = QUOTAS[idx]!;
   if (state.coins >= quota) {
-    return {
-      state: {
-        ...state,
-        coins: state.coins - quota,
-        round: state.round + 1,
-        spinsLeft: SPINS_PER_ROUND,
-        phase: 'idle',
-      },
-      outcome: 'continue',
+    const paid: GameState = {
+      ...state,
+      coins: state.coins - quota,
+      round: state.round + 1,
+      spinsLeft: SPINS_PER_ROUND,
     };
+    if (state.round === FINAL_ROUND) {
+      return { state: { ...paid, phase: 'victory' }, outcome: 'victory' };
+    }
+    return { state: { ...paid, phase: 'idle' }, outcome: 'continue' };
+  }
+  return { state: { ...state, phase: 'gameover' }, outcome: 'gameover' };
+}
+
+// ── Boutique ────────────────────────────────────────────────────────────────
+
+export function enterShop(state: GameState, rng: () => number): GameState {
+  let pool = SYMBOLS.filter(s => s.buyable);
+  const offer: ShopItem[] = [];
+  const size = Math.min(SHOP_OFFER_SIZE, pool.length);
+  for (let i = 0; i < size; i++) {
+    const { picked, rest } = weightedPick(pool, rng);
+    pool = rest;
+    offer.push({ symbolId: picked.id, cost: COSTS[picked.rarity] ?? 0 });
   }
   return {
-    state: { ...state, phase: 'gameover' },
-    outcome: 'gameover',
+    ...state,
+    phase: 'shop',
+    shopOffer: offer,
+    buysLeft: BUYS_PER_SHOP,
+    removalsLeft: REMOVALS_PER_SHOP,
   };
+}
+
+export function buySymbol(state: GameState, index: number): GameState {
+  const item = state.shopOffer[index];
+  if (!item || state.buysLeft <= 0 || state.coins < item.cost) return state;
+  return {
+    ...state,
+    coins: state.coins - item.cost,
+    reserve: [...state.reserve, item.symbolId],
+    buysLeft: state.buysLeft - 1,
+  };
+}
+
+export function removeSymbol(state: GameState, symbolId: string): GameState {
+  if (state.removalsLeft <= 0) return state;
+  if (state.reserve.length <= MIN_RESERVE) return state;
+  const idx = state.reserve.indexOf(symbolId);
+  if (idx === -1) return state;
+  const newReserve = state.reserve.filter((_, i) => i !== idx);
+  return { ...state, reserve: newReserve, removalsLeft: state.removalsLeft - 1 };
+}
+
+export function exitShop(state: GameState): GameState {
+  return { ...state, phase: 'idle', shopOffer: [] };
 }

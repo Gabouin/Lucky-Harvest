@@ -28,6 +28,7 @@ export interface GameSymbol {
   baseValue: number;
   tags: string[];
   effects: Effect[];
+  buyable: boolean; // false = produit (oeuf, laine) — jamais proposé en boutique
 }
 
 // Grille 4×4 — null = case vide

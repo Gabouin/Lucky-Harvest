@@ -54,7 +54,7 @@ ou retirer un symbole) → le quota augmente → manche suivante. Game over si l
 
 - [x] Setup projet + rendu pixel + grille vide 4x4
 - [x] Moteur de résolution + 12 symboles starter (testé headless)
-- [x] Boucle jouable de bout en bout (MVP — boutique en 3B)
+- [x] Boucle jouable de bout en bout (MVP + boutique + victoire)
 - [ ] Contenu (≈35 symboles, raretés, effets temporels, retrait en boutique)
 - [ ] Juice + écrans (titre, game over)
 - [ ] Audio + mini-tutoriel + équilibrage
