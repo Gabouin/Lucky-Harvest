@@ -1,7 +1,7 @@
 export const STARTING_COINS = 0;
 
 export const STARTING_RESERVE: string[] = [
-  'ble', 'ble', 'ble', 'ble',
+  'patate', 'patate', 'patate', 'patate',
   'vache', 'poule',
 ];
 

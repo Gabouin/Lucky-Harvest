@@ -20,10 +20,17 @@ export interface Effect {
   action: Action;
 }
 
+export interface SpriteRef {
+  key: string;       // clé Phaser enregistrée dans preload
+  frame?: number;    // index de frame dans le spritesheet (absent = image statique)
+  fw: number;        // largeur source de la frame en px
+  fh: number;        // hauteur source de la frame en px
+}
+
 export interface GameSymbol {
   id: string;
   name: string;
-  sprite: string; // placeholder = id tant qu'on n'a pas mappé les frames
+  spriteRef: SpriteRef;
   rarity: Rarity;
   baseValue: number;
   tags: string[];

@@ -90,23 +90,23 @@ describe('boutique — achat', () => {
 describe('boutique — retrait', () => {
   it('removeSymbol retire un exemplaire et décrémente removalsLeft', () => {
     const state = makeShopState();
-    // reserve = ['ble','ble','ble','ble','vache','poule'] — 6 éléments > MIN_RESERVE(4)
-    const next = removeSymbol(state, 'ble');
+    // reserve = ['patate','patate','patate','patate','vache','poule'] — 6 éléments > MIN_RESERVE(4)
+    const next = removeSymbol(state, 'patate');
     expect(next.reserve.length).toBe(5);
     expect(next.removalsLeft).toBe(0);
-    expect(next.reserve.filter(id => id === 'ble').length).toBe(3);
+    expect(next.reserve.filter(id => id === 'patate').length).toBe(3);
   });
 
   it('removeSymbol no-op si removalsLeft = 0', () => {
     const state = makeShopState({ removalsLeft: 0 });
-    expect(removeSymbol(state, 'ble')).toBe(state);
+    expect(removeSymbol(state, 'patate')).toBe(state);
   });
 
   it('removeSymbol respecte le plancher MIN_RESERVE', () => {
     // Reserve exactement au minimum
-    const minReserve = Array<string>(MIN_RESERVE).fill('ble');
+    const minReserve = Array<string>(MIN_RESERVE).fill('patate');
     const state = makeShopState({ reserve: minReserve });
-    expect(removeSymbol(state, 'ble')).toBe(state);
+    expect(removeSymbol(state, 'patate')).toBe(state);
   });
 });
 
