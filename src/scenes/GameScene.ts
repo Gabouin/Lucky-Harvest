@@ -9,30 +9,45 @@ import { SYMBOL_MAP } from '../data/symbols';
 import type { GameState } from '../engine/game';
 import type { GridState } from '../data/types';
 
-const CELL = 48;
-const GRID_PX = GRID_SIZE * CELL; // 192px
-const OY = 24;
+const CELL = 96;
+const GRID_PX = GRID_SIZE * CELL; // 384px
+const OY = 48;
 
-// Paths relative to src/assets/ (publicDir)
 const CV = 'CozyValley_Premium_1.3/CozyValley_Premium_1.3';
 
-const TAG_COLORS: Record<string, number> = {
-  culture: 0x5a8a2a,
-  animal:  0x8a5a2a,
-  minerai: 0x6a6a8a,
-  humain:  0x2a5a8a,
-  proie:   0x9a8a2a,
-};
-const COLOR_EMPTY  = 0x2a2a3a;
-const COLOR_BORDER = 0x4a4a5a;
+const COLOR_EMPTY    = 0x2d1b0e;
+const COLOR_OCCUPIED = 0x3d2a10;
+const COLOR_BORDER   = 0x5a3a1a;
 
-const S_HUD:  Phaser.Types.GameObjects.Text.TextStyle = { fontSize: '11px', color: '#ffffff', fontFamily: 'monospace' };
-const S_SM:   Phaser.Types.GameObjects.Text.TextStyle = { fontSize: '10px', color: '#ffffff', fontFamily: 'monospace' };
-const S_TINY: Phaser.Types.GameObjects.Text.TextStyle = { fontSize: '8px',  color: '#aaaaaa', fontFamily: 'monospace' };
+const S_HUD:  Phaser.Types.GameObjects.Text.TextStyle = { fontSize: '18px', color: '#ffffff', fontFamily: 'Silkscreen' };
+const S_SM:   Phaser.Types.GameObjects.Text.TextStyle = { fontSize: '16px', color: '#ffffff', fontFamily: 'Silkscreen' };
+const S_TINY: Phaser.Types.GameObjects.Text.TextStyle = { fontSize: '13px', color: '#aaaaaa', fontFamily: 'Silkscreen' };
 
-// Integer scale fitting ~80% of a cell (38 px target), no distortion
 function spriteScale(fw: number, fh: number): number {
-  return Math.max(1, Math.floor(38 / Math.max(fw, fh)));
+  return Math.max(1, Math.floor(76 / Math.max(fw, fh)));
+}
+
+type SynergyPair = { srcRow: number; srcCol: number; tgtRow: number; tgtCol: number };
+
+function drawBackground(scene: Phaser.Scene): void {
+  const { width: W, height: H } = scene.scale;
+  scene.add.rectangle(W / 2, H / 2, W, H, 0x34580a).setDepth(-1);
+  scene.add.rectangle(W / 2, H - 27, W, 55, 0x264506).setDepth(-1);
+  scene.add.image(-30, H - 286, 'barn').setCrop(0, 0, 64, 64).setScale(4).setOrigin(0, 0).setDepth(-1);
+  scene.add.image(30,      H - 220, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(130,     H - 220, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(215,     H - 220, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(W - 340, H - 220, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(W - 230, H - 220, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(W - 120, H - 220, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const flDefs: [number, number][] = [
+    [70,     0], [160,   16], [255,   32], [340,   48],
+    [W-340, 32], [W-230, 16], [W-130,  0], [W-50,  48],
+  ];
+  for (const [fx, cy] of flDefs)
+    scene.add.image(fx, H - 108, 'flowers').setCrop(0, cy, 16, 16).setScale(5).setDepth(-1);
+  for (let x = 0; x <= W; x += 48)
+    scene.add.image(x, H - 50, 'fence_seg').setCrop(16, 0, 16, 16).setScale(3).setOrigin(0, 0.5).setDepth(-1);
 }
 
 export class GameScene extends Phaser.Scene {
@@ -41,6 +56,7 @@ export class GameScene extends Phaser.Scene {
   private busy = false;
 
   private ox = 0;
+  private lastGrid: GridState = [];
   private cellRects:   Phaser.GameObjects.Rectangle[][] = [];
   private cellLabels:  Phaser.GameObjects.Text[][] = [];
   private cellSprites: (Phaser.GameObjects.Image | null)[][] = [];
@@ -50,28 +66,53 @@ export class GameScene extends Phaser.Scene {
   private quotaText!: Phaser.GameObjects.Text;
 
   private shopObjs: Phaser.GameObjects.GameObject[] = [];
+  private gridContainer!: Phaser.GameObjects.Container;
+
+  // ── Tooltip ──────────────────────────────────────────────────────────────
+  private tipBg:   Phaser.GameObjects.Rectangle | null = null;
+  private tipName: Phaser.GameObjects.Text      | null = null;
+  private tipDesc: Phaser.GameObjects.Text      | null = null;
 
   constructor() { super({ key: 'GameScene' }); }
 
   preload(): void {
-    this.load.spritesheet('icons',   `${CV}/Icons/Icons.png`,                   { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('cow',     `${CV}/Animals/Cow/Cow_brownwhite.png`,    { frameWidth: 32, frameHeight: 32 });
-    this.load.spritesheet('chicken', `${CV}/Animals/Chicken/Chicken_brown.png`, { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('eggs',    `${CV}/Animals/Chicken/Chicken_eggs.png`,  { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('sheep',   `${CV}/Animals/Sheep/Sheep_white.png`,     { frameWidth: 32, frameHeight: 32 });
-    this.load.spritesheet('rat',     `${CV}/Monsters/Rat.png`,                  { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('icons',    `${CV}/Icons/Icons.png`,                   { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('cow',      `${CV}/Animals/Cow/Cow_brownwhite.png`,    { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('chicken',  `${CV}/Animals/Chicken/Chicken_brown.png`, { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('eggs',     `${CV}/Animals/Chicken/Chicken_eggs.png`,  { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('sheep',    `${CV}/Animals/Sheep/Sheep_white.png`,     { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('rat',      `${CV}/Monsters/Rat.png`,                  { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('duck',     `${CV}/Animals/Duck/Duck_white.png`,       { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('goose',    `${CV}/Animals/Goose/Goose_white.png`,     { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('fish',     `${CV}/Animals/Fish/Fish_small.png`,       { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('slime',    `${CV}/Monsters/Slime.png`,                { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('skeleton', `${CV}/Monsters/Skeleton.png`,             { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('char1',    'chars/char1.png',                          { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('char2',    'chars/char2.png',                          { frameWidth: 32, frameHeight: 32 });
+    this.load.image(     'tree_oak',    `${CV}/Tilesets/Trees/Trees_oak.png`);
+    this.load.image(     'tree_cherry', `${CV}/Tilesets/Trees/Trees_cherryblossom.png`);
+    this.load.image(     'barn',        `${CV}/Tilesets/Barn.png`);
+    this.load.image('fence_seg', `${CV}/Tilesets/Woodenfence.png`);
+    this.load.image('flowers',   `${CV}/Tilesets/Flowers.png`);
   }
 
   create(): void {
     const { width, height } = this.scale;
     this.ox = Math.floor((width - GRID_PX) / 2);
     this.busy = false;
+    this.lastGrid    = this.emptyGrid();
     this.cellRects   = [];
     this.cellLabels  = [];
     this.cellSprites = [];
     this.shopObjs    = [];
 
     this.createPlaceholderTexture();
+    this.createParticleTextures();
+    drawBackground(this);
+    this.gridContainer = this.add.container(
+      Math.round(this.ox + GRID_PX / 2),
+      Math.round(OY + GRID_PX / 2),
+    );
 
     const { state, rng } = createGame();
     this.state = state;
@@ -96,6 +137,14 @@ export class GameScene extends Phaser.Scene {
     g.destroy();
   }
 
+  private createParticleTextures(): void {
+    const g = this.add.graphics();
+    g.fillStyle(0xffcc00);
+    g.fillCircle(4, 4, 4);
+    g.generateTexture('coinParticle', 9, 9);
+    g.destroy();
+  }
+
   private txt(
     x: number, y: number,
     content: string,
@@ -107,14 +156,52 @@ export class GameScene extends Phaser.Scene {
       .setResolution(window.devicePixelRatio);
   }
 
+  // ── Tooltip ──────────────────────────────────────────────────────────────
+
+  private showTooltip(px: number, py: number, name: string, desc: string): void {
+    this.hideTooltip();
+    const PAD = 10;
+    const W   = 300;
+    const { width, height } = this.scale;
+
+    const tmpName = this.add.text(0, -2000, name, { fontSize: '18px', color: '#ffee44', fontFamily: 'Silkscreen' }).setResolution(window.devicePixelRatio);
+    const tmpDesc = this.add.text(0, -2000, desc, { fontSize: '16px', color: '#cccccc', fontFamily: 'Silkscreen', wordWrap: { width: W - PAD * 2 } }).setResolution(window.devicePixelRatio);
+    const nameH = tmpName.height;
+    const descH = tmpDesc.height;
+    tmpName.destroy();
+    tmpDesc.destroy();
+
+    const H = PAD * 2 + nameH + 6 + descH;
+    let tx = px + 10;
+    let ty = Math.round(py - H / 2);
+    if (tx + W > width  - 4) tx = px - W - 10;
+    if (ty < 4)               ty = 4;
+    if (ty + H > height - 4)  ty = height - H - 4;
+
+    this.tipBg = this.add.rectangle(tx, ty, W, H, 0x0a0a18, 0.96)
+      .setOrigin(0, 0).setStrokeStyle(1, 0x666688).setDepth(100);
+    this.tipName = this.add.text(tx + PAD, ty + PAD, name,
+      { fontSize: '18px', color: '#ffee44', fontFamily: 'Silkscreen' })
+      .setResolution(window.devicePixelRatio).setDepth(101);
+    this.tipDesc = this.add.text(tx + PAD, ty + PAD + nameH + 6, desc,
+      { fontSize: '16px', color: '#cccccc', fontFamily: 'Silkscreen', wordWrap: { width: W - PAD * 2 } })
+      .setResolution(window.devicePixelRatio).setDepth(101);
+  }
+
+  private hideTooltip(): void {
+    this.tipBg?.destroy();   this.tipBg   = null;
+    this.tipName?.destroy(); this.tipName = null;
+    this.tipDesc?.destroy(); this.tipDesc = null;
+  }
+
   // ── Construction ─────────────────────────────────────────────────────────
 
   private buildHUD(width: number): void {
-    this.coinText  = this.txt(6, 6, '', S_HUD);
-    this.roundText = this.txt(width / 2, 6, '', S_HUD, 0.5, 0).setDepth(20);
-    this.quotaText = this.txt(width - 6, 6, '', { ...S_HUD, color: '#ff9944' }, 1, 0).setDepth(20);
-    this.coinText.setDepth(20);
-    this.add.graphics().lineStyle(1, 0x444455).lineBetween(0, 20, width, 20).setDepth(20);
+    this.add.rectangle(width / 2, 20, width, 40, 0x1a1a1a, 0.82).setDepth(19);
+    this.coinText  = this.txt(12, 12, '', S_HUD).setDepth(20);
+    this.roundText = this.txt(width / 2, 12, '', S_HUD, 0.5, 0).setDepth(20);
+    this.quotaText = this.txt(width - 12, 12, '', { ...S_HUD, color: '#ffaa33' }, 1, 0).setDepth(20);
+    this.add.graphics().lineStyle(1, 0x5a3a1a).lineBetween(0, 40, width, 40).setDepth(20);
   }
 
   private buildGrid(): void {
@@ -125,25 +212,39 @@ export class GameScene extends Phaser.Scene {
       this.cellRects[row]  = [];
       this.cellLabels[row] = [];
       for (let col = 0; col < GRID_SIZE; col++) {
-        const cx = Math.round(this.ox + col * CELL + CELL / 2);
-        const cy = Math.round(OY + row * CELL + CELL / 2);
+        // Container-relative coords (container origin = grid center)
+        const cx = col * CELL + CELL / 2 - GRID_PX / 2;
+        const cy = row * CELL + CELL / 2 - GRID_PX / 2;
         const rect = this.add.rectangle(cx, cy, CELL - 1, CELL - 1, COLOR_EMPTY);
         rect.setStrokeStyle(1, COLOR_BORDER);
         this.cellRects[row][col] = rect;
-        this.cellLabels[row][col] = this.txt(cx, cy + 17, '', S_TINY, 0.5, 0).setDepth(2);
+        const label = this.txt(cx, cy + 34, '', S_TINY, 0.5, 0).setDepth(2);
+        this.cellLabels[row][col] = label;
+        this.gridContainer.add([rect, label]);
+
+        const r = row, c = col;
+        rect.setInteractive();
+        rect.on('pointerover', () => {
+          const sym = this.lastGrid[r]?.[c];
+          if (sym) {
+            const b = rect.getBounds();
+            this.showTooltip(b.right + 6, b.centerY, sym.name, sym.description);
+          }
+        });
+        rect.on('pointerout', () => this.hideTooltip());
       }
     }
   }
 
   private buildSpinButton(width: number, height: number): void {
     const cx = Math.round(width / 2);
-    const cy = height - 16;
-    const bg = this.add.rectangle(cx, cy, 84, 18, 0x3d7a2b).setStrokeStyle(1, 0x8bc34a);
+    const cy = height - 32;
+    const bg = this.add.rectangle(cx, cy, 168, 36, 0xe8a020).setStrokeStyle(1, 0xffd060);
     bg.setInteractive({ useHandCursor: true });
     bg.on('pointerup',   () => this.onSpin());
-    bg.on('pointerover', () => bg.setFillStyle(0x5a9a40));
-    bg.on('pointerout',  () => bg.setFillStyle(0x3d7a2b));
-    this.txt(cx, cy, 'SPIN', { ...S_HUD, color: '#ccff99' }, 0.5, 0.5);
+    bg.on('pointerover', () => bg.setFillStyle(0xf0b030));
+    bg.on('pointerout',  () => bg.setFillStyle(0xe8a020));
+    this.txt(cx, cy, 'SPIN', { ...S_HUD, color: '#ffffff' }, 0.5, 0.5);
   }
 
   // ── Grid render ──────────────────────────────────────────────────────────
@@ -155,32 +256,45 @@ export class GameScene extends Phaser.Scene {
   }
 
   private renderGrid(grid: GridState): void {
+    this.lastGrid = grid;
     for (let row = 0; row < GRID_SIZE; row++) {
       for (let col = 0; col < GRID_SIZE; col++) {
         const sym   = grid[row][col];
         const rect  = this.cellRects[row][col];
         const label = this.cellLabels[row][col];
-        const cx    = Math.round(this.ox + col * CELL + CELL / 2);
-        const cy    = Math.round(OY + row * CELL + CELL / 2);
+        // Container-relative coords (same as in buildGrid)
+        const cx = col * CELL + CELL / 2 - GRID_PX / 2;
+        const cy = row * CELL + CELL / 2 - GRID_PX / 2;
 
         if (this.cellSprites[row][col]) {
           this.cellSprites[row][col]!.destroy();
           this.cellSprites[row][col] = null;
         }
 
-        rect.setFillStyle(COLOR_EMPTY);
-
         if (sym === null) {
+          rect.setFillStyle(COLOR_EMPTY);
           label.setText('');
         } else {
+          rect.setFillStyle(COLOR_OCCUPIED);
           const { key, frame, fw, fh } = sym.spriteRef;
           const scale = spriteScale(fw, fh);
-          const img = this.add.image(cx, cy, key, frame ?? 0).setScale(scale).setOrigin(0.5).setDepth(1);
+          const img = this.add.image(cx, cy, key, frame ?? 0)
+            .setScale(0).setOrigin(0.5).setDepth(1);
           this.cellSprites[row][col] = img;
+          this.gridContainer.add(img);
           label.setText(sym.name);
+
+          this.tweens.add({
+            targets: img,
+            scaleX: scale, scaleY: scale,
+            duration: 180, ease: 'Back.Out',
+            delay: (row * GRID_SIZE + col) * 30,
+          });
         }
       }
     }
+    // Labels always on top of sprites within the container
+    this.gridContainer.sort('depth');
   }
 
   private refreshHUD(): void {
@@ -188,15 +302,101 @@ export class GameScene extends Phaser.Scene {
     const quota = QUOTAS[idx]!;
     this.coinText.setText(`Coins: ${this.state.coins}`);
     this.roundText.setText(`Round ${this.state.round}`);
-    this.quotaText.setText(`Quota: ${quota}`);
+    this.quotaText.setText(`Rent: ${quota}`);
+  }
+
+  // ── Visual effects ────────────────────────────────────────────────────────
+
+  // Detect onAdjacentTag synergies for flash animation (visual only, no scoring)
+  private computeSynergies(grid: GridState): SynergyPair[] {
+    const DIRS: readonly [number, number][] = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+    const pairs: SynergyPair[] = [];
+    for (let row = 0; row < GRID_SIZE; row++) {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        const sym = grid[row]?.[col];
+        if (!sym) continue;
+        for (const { trigger } of sym.effects) {
+          if (trigger.kind !== 'onAdjacentTag') continue;
+          for (const [dr, dc] of DIRS) {
+            const r = row + dr, c = col + dc;
+            if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) continue;
+            const n = grid[r]?.[c];
+            if (n && n.tags.includes(trigger.tag)) {
+              pairs.push({ srcRow: row, srcCol: col, tgtRow: r, tgtCol: c });
+            }
+          }
+        }
+      }
+    }
+    return pairs;
+  }
+
+  private flashCell(row: number, col: number, color: number, alpha: number, duration: number): void {
+    const cx = Math.round(this.ox + col * CELL + CELL / 2);
+    const cy = Math.round(OY + row * CELL + CELL / 2);
+    const flash = this.add.rectangle(cx, cy, CELL - 1, CELL - 1, color, alpha).setDepth(3);
+    this.tweens.add({
+      targets: flash, alpha: 0,
+      duration, ease: 'Linear',
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  private emitCoinParticles(row: number, col: number): void {
+    const cx = Math.round(this.ox + col * CELL + CELL / 2);
+    const cy = Math.round(OY + row * CELL + CELL / 2);
+    const emitter = this.add.particles(cx, cy, 'coinParticle', {
+      speed: { min: 50, max: 120 },
+      angle: { min: 240, max: 300 },
+      scale: { start: 1.2, end: 0 },
+      alpha: { start: 1,   end: 0 },
+      lifespan: 600,
+      emitting: false,
+    });
+    emitter.setDepth(5);
+    emitter.explode(7);
+    this.time.delayedCall(800, () => emitter.destroy());
+  }
+
+  private bounceCoinText(): void {
+    this.tweens.killTweensOf(this.coinText);
+    this.tweens.add({
+      targets: this.coinText,
+      scaleX: 1.3, scaleY: 1.3,
+      duration: 80,
+      ease: 'Power2',
+      yoyo: true,
+      onComplete: () => this.coinText.setScale(1),
+    });
   }
 
   private showGain(amount: number): void {
-    const cx = Math.round(this.scale.width / 2);
-    const cy = OY + GRID_PX + 12;
-    const t = this.txt(cx, cy, `+${amount} coins`, { fontSize: '11px', color: '#ffee44', fontFamily: 'monospace' }, 0.5, 0.5);
+    const t = this.txt(12, 24, `+${amount}`, { fontSize: '15px', color: '#44ee88', fontFamily: 'Silkscreen' }, 0, 0.5);
+    t.setDepth(22);
     this.tweens.add({
-      targets: t, y: cy - 20, alpha: 0,
+      targets: t, y: -6, alpha: 0,
+      duration: 900, ease: 'Power2',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  private showRentPaid(amount: number): void {
+    const x = this.scale.width - 12;
+    const t = this.txt(x, 24, `−${amount}`, { fontSize: '15px', color: '#ff6666', fontFamily: 'Silkscreen' }, 1, 0.5);
+    t.setDepth(22);
+    this.tweens.add({
+      targets: t, y: -6, alpha: 0,
+      duration: 900, ease: 'Power2',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  private showRentFailed(amount: number): void {
+    const cx = Math.round(this.scale.width / 2);
+    const t = this.txt(cx, 24, `Rent ${amount} — can't pay!`, { fontSize: '15px', color: '#ff2222', fontFamily: 'Silkscreen' }, 0.5, 0.5);
+    t.setDepth(22);
+    this.tweens.add({
+      targets: t, y: -6, alpha: 0,
       duration: 1200, ease: 'Power2',
       onComplete: () => t.destroy(),
     });
@@ -207,123 +407,189 @@ export class GameScene extends Phaser.Scene {
   private onSpin(): void {
     if (this.busy || this.state.phase !== 'idle') return;
     this.busy = true;
+    this.hideTooltip();
 
-    const grid   = spinGrid(this.state.reserve, this.rng);
-    this.renderGrid(grid);
+    this.cameras.main.shake(200, 0.003);
 
-    const result = resolve(grid, { round: this.state.round });
-    this.state = applyResolution(this.state, result);
-    this.refreshHUD();
-    this.showGain(result.totalCoins);
+    // Compute everything upfront (pure); render after wheel animation
+    const grid      = spinGrid(this.state.reserve, this.rng);
+    const result    = resolve(grid, { round: this.state.round });
+    const synergies = this.computeSynergies(grid);
+    const nextState = applyResolution(this.state, result);
 
-    if (this.state.spinsLeft === 0) {
-      const { state: next, outcome } = endRound(this.state);
-      this.state = next;
-      if (outcome === 'gameover') {
-        this.time.delayedCall(1400, () => this.showGameOver());
-      } else if (outcome === 'victory') {
-        this.time.delayedCall(1400, () => this.showVictory());
-      } else {
-        this.state = enterShop(this.state, this.rng);
-        this.refreshHUD();
-        this.time.delayedCall(1400, () => this.openShop());
+    this.showSpinWheel(); // 600ms wheel, then symbols pop
+
+    // t=600ms: wheel done → symbols pop in
+    this.time.delayedCall(600, () => this.renderGrid(grid));
+
+    // t=1100ms: flash synergies + particles
+    this.time.delayedCall(1100, () => {
+      for (const { srcRow, srcCol, tgtRow, tgtCol } of synergies) {
+        this.flashCell(srcRow, srcCol, 0xffdd44, 0.7, 200);
+        this.flashCell(tgtRow, tgtCol, 0x88ff88, 0.7, 200);
       }
-    } else {
-      this.time.delayedCall(1400, () => { this.busy = false; });
+      for (const ev of result.events) {
+        if (ev.type === 'destroy') this.flashCell(ev.row, ev.col, 0xff4444, 0.7, 300);
+        if (ev.type === 'gain')    this.emitCoinParticles(ev.row, ev.col);
+      }
+    });
+
+    // t=1300ms: HUD coins go up + bounce + "+X" popup
+    this.time.delayedCall(1300, () => {
+      this.state = nextState;
+      this.refreshHUD();
+      this.bounceCoinText();
+      this.showGain(result.totalCoins);
+    });
+
+    if (nextState.spinsLeft > 0) {
+      this.time.delayedCall(2000, () => { this.busy = false; });
+      return;
     }
+
+    const idx   = Math.min(nextState.round - 1, QUOTAS.length - 1);
+    const rent  = QUOTAS[idx]!;
+    const { state: afterRound, outcome } = endRound(nextState);
+
+    // t=2100ms: pay rent (800ms after HUD update)
+    this.time.delayedCall(2100, () => {
+      if (outcome === 'gameover') {
+        this.showRentFailed(rent);
+        this.state = afterRound;
+        this.time.delayedCall(1400, () => this.showGameOver());
+      } else {
+        this.state = afterRound;
+        this.refreshHUD();
+        this.bounceCoinText();
+        this.showRentPaid(rent);
+        if (outcome === 'victory') {
+          this.time.delayedCall(1400, () => this.showVictory());
+        } else {
+          this.state = enterShop(this.state, this.rng);
+          this.refreshHUD();
+          this.time.delayedCall(400, () => this.openShop());
+        }
+      }
+    });
+  }
+
+  private showSpinWheel(): void {
+    this.gridContainer.angle = 0;
+    this.tweens.add({
+      targets: this.gridContainer,
+      angle: 720,
+      duration: 600,
+      ease: 'Cubic.Out',
+      onComplete: () => { this.gridContainer.angle = 0; },
+    });
   }
 
   // ── Shop ─────────────────────────────────────────────────────────────────
 
   private openShop(): void {
+    this.hideTooltip();
+    for (const row of this.cellRects) for (const rect of row) rect.disableInteractive();
     const { width, height } = this.scale;
 
-    const bgH = height - 21;
-    const bg = this.add.rectangle(width / 2, 21 + bgH / 2, width, bgH, 0x0a0a18).setDepth(10);
+    const bgH = height - 42;
+    const bg = this.add.rectangle(width / 2, 42 + bgH / 2, width, bgH, 0x0a0a18).setDepth(10);
     this.shopObjs.push(bg);
 
-    this.shopAdd(this.txt(width / 2, 26, '── SHOP ──', { ...S_HUD, color: '#ffcc44' }, 0.5, 0).setDepth(11));
+    this.shopAdd(this.txt(width / 2, 58, '── SHOP ──', { ...S_HUD, color: '#ffcc44' }, 0.5, 0).setDepth(11));
 
     // ── Offers ───────────────────────────────────────────────────────────
-    const offerXs = [80, 240, 400];
+    const offerXs = [160, 480, 800];
     for (let i = 0; i < this.state.shopOffer.length; i++) {
       const item = this.state.shopOffer[i];
       const sym  = SYMBOL_MAP.get(item.symbolId);
       if (!sym) continue;
-      const cx = offerXs[i]!;
+      const cx     = offerXs[i]!;
       const canBuy = this.state.buysLeft > 0 && this.state.coins >= item.cost;
 
-      const cardColor = TAG_COLORS[sym.tags[0] ?? ''] ?? COLOR_EMPTY;
-      this.shopAdd(this.add.rectangle(cx, 70, 128, 72, cardColor, 0.85).setStrokeStyle(1, 0x888888).setDepth(11));
+      const cardRect = this.add.rectangle(cx, 152, 256, 144, 0x3d2a10)
+        .setStrokeStyle(2, 0xc8860a).setDepth(11);
+      const capSym = sym;
+      cardRect.setInteractive();
+      cardRect.on('pointerover', () => this.showTooltip(cx + 128 + 10, 152, capSym.name, capSym.description));
+      cardRect.on('pointerout',  () => this.hideTooltip());
+      this.shopAdd(cardRect);
 
       const { key, frame, fw, fh } = sym.spriteRef;
       const scale = spriteScale(fw, fh);
-      this.shopAdd(this.add.image(cx, 48, key, frame ?? 0).setScale(scale).setOrigin(0.5).setDepth(12));
+      this.shopAdd(this.add.image(cx, 108, key, frame ?? 0).setScale(scale).setOrigin(0.5).setDepth(12));
 
-      this.shopAdd(this.txt(cx, 68, sym.name, { ...S_HUD, color: '#ffffff' }, 0.5, 0.5).setDepth(12));
-      this.shopAdd(this.txt(cx, 80, `Rarity: ${sym.rarity}`, { ...S_SM, color: '#cccccc' }, 0.5, 0.5).setDepth(12));
-      this.shopAdd(this.txt(cx, 91, `Cost: ${item.cost}`, { ...S_SM, color: canBuy ? '#ffee44' : '#666666' }, 0.5, 0.5).setDepth(12));
+      this.shopAdd(this.txt(cx, 148, sym.name,                { ...S_HUD, color: '#ffffff' }, 0.5, 0.5).setDepth(12));
+      this.shopAdd(this.txt(cx, 172, `Rarity: ${sym.rarity}`, { ...S_SM,  color: '#cccccc' }, 0.5, 0.5).setDepth(12));
+      this.shopAdd(this.txt(cx, 194, `Cost: ${item.cost}`,    { ...S_SM,  color: canBuy ? '#ffee44' : '#666666' }, 0.5, 0.5).setDepth(12));
 
-      const btnFill   = canBuy ? 0x3d7a2b : 0x2a2a2a;
-      const btnBorder = canBuy ? 0x8bc34a : 0x444444;
-      const btn = this.add.rectangle(cx, 103, 90, 13, btnFill).setStrokeStyle(1, btnBorder).setDepth(12);
+      const btnFill   = canBuy ? 0x44aa44 : 0x555555;
+      const btnBorder = canBuy ? 0x66cc66 : 0x444444;
+      const btn = this.add.rectangle(cx, 218, 180, 26, btnFill).setStrokeStyle(1, btnBorder).setDepth(12);
       if (canBuy) {
         btn.setInteractive({ useHandCursor: true });
         const idx = i;
         btn.on('pointerup',   () => this.onBuy(idx));
-        btn.on('pointerover', () => btn.setFillStyle(0x5a9a40));
+        btn.on('pointerover', () => btn.setFillStyle(0x55bb55));
         btn.on('pointerout',  () => btn.setFillStyle(btnFill));
       }
       this.shopAdd(btn);
-      this.shopAdd(this.txt(cx, 103, 'BUY', { fontSize: '9px', color: canBuy ? '#ccff99' : '#555555', fontFamily: 'monospace' }, 0.5, 0.5).setDepth(13));
+      this.shopAdd(this.txt(cx, 218, 'BUY', { fontSize: '16px', color: canBuy ? '#ccff99' : '#888888', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(13));
     }
 
     // ── Separator ────────────────────────────────────────────────────────
-    this.shopAdd(this.add.graphics().lineStyle(1, 0x333355).lineBetween(0, 115, width, 115).setDepth(11));
+    this.shopAdd(this.add.graphics().lineStyle(1, 0x5a3a1a).lineBetween(0, 244, width, 244).setDepth(11));
 
     // ── Remove ───────────────────────────────────────────────────────────
     const canRemove = this.state.removalsLeft > 0;
     const removeColor = canRemove ? '#ccaaff' : '#666666';
-    this.shopAdd(this.txt(10, 119, `Remove (${this.state.removalsLeft} left):`, { ...S_SM, color: removeColor }).setDepth(11));
+    this.shopAdd(this.txt(20, 252, `Remove (${this.state.removalsLeft} left):`, { ...S_SM, color: removeColor }).setDepth(11));
 
     const reserveMap = new Map<string, number>();
     for (const id of this.state.reserve) reserveMap.set(id, (reserveMap.get(id) ?? 0) + 1);
 
-    const ECOL = 152;
-    const EGAP = 6;
-    let col = 0, ey = 131;
+    const ECOL = 304;
+    const EGAP = 12;
+    let col = 0, ey = 276;
     for (const [id, count] of reserveMap) {
       const sym = SYMBOL_MAP.get(id);
       if (!sym) continue;
-      const ex  = 10 + col * (ECOL + EGAP);
-      const ecy = ey + 9;
+      const ex  = 20 + col * (ECOL + EGAP);
+      const ecy = ey + 18;
       const atFloor = this.state.reserve.length <= MIN_RESERVE;
       const canRm   = canRemove && !atFloor;
 
-      this.shopAdd(this.add.rectangle(ex + ECOL / 2, ecy, ECOL, 18, 0x1e1e2e).setStrokeStyle(1, 0x3a3a5a).setDepth(11));
-      this.shopAdd(this.txt(ex + 4, ecy, `${sym.name} ×${count}`, { ...S_SM, color: '#dddddd' }, 0, 0.5).setDepth(12));
+      const rowRect = this.add.rectangle(ex + ECOL / 2, ecy, ECOL, 36, 0x1e1e2e)
+        .setStrokeStyle(1, 0x3a3a5a).setDepth(11);
+      const capSym2 = sym;
+      rowRect.setInteractive();
+      rowRect.on('pointerover', () => this.showTooltip(ex + ECOL + 10, ecy, capSym2.name, capSym2.description));
+      rowRect.on('pointerout',  () => this.hideTooltip());
+      this.shopAdd(rowRect);
+
+      this.shopAdd(this.txt(ex + 8, ecy, `${sym.name} ×${count}`, { ...S_SM, color: '#dddddd' }, 0, 0.5).setDepth(12));
 
       const rmFill = canRm ? 0x6a1e1e : 0x222222;
-      const rmBtn = this.add.rectangle(ex + ECOL - 11, ecy, 16, 13, rmFill).setStrokeStyle(1, canRm ? 0xcc4444 : 0x333333).setDepth(12);
+      const rmBtn = this.add.rectangle(ex + ECOL - 22, ecy, 32, 26, rmFill).setStrokeStyle(1, canRm ? 0xcc4444 : 0x333333).setDepth(12);
       if (canRm) {
         rmBtn.setInteractive({ useHandCursor: true });
         const capturedId = id;
         rmBtn.on('pointerup', () => this.onRemove(capturedId));
       }
       this.shopAdd(rmBtn);
-      this.shopAdd(this.txt(ex + ECOL - 11, ecy, '−', { fontSize: '9px', color: canRm ? '#ff8888' : '#444444', fontFamily: 'monospace' }, 0.5, 0.5).setDepth(13));
+      this.shopAdd(this.txt(ex + ECOL - 22, ecy, '−', { fontSize: '16px', color: canRm ? '#ff8888' : '#444444', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(13));
 
       col++;
-      if (col >= 3) { col = 0; ey += 22; }
+      if (col >= 3) { col = 0; ey += 44; }
     }
 
     // ── Continue button ───────────────────────────────────────────────────
-    const exitBg = this.add.rectangle(width / 2, height - 14, 120, 18, 0x2a5a2a).setStrokeStyle(1, 0x6ac36a).setDepth(11).setInteractive({ useHandCursor: true });
+    const exitBg = this.add.rectangle(width / 2, height - 28, 240, 36, 0xe8a020)
+      .setStrokeStyle(1, 0xffd060).setDepth(11).setInteractive({ useHandCursor: true });
     exitBg.on('pointerup',   () => this.onExitShop());
-    exitBg.on('pointerover', () => exitBg.setFillStyle(0x3a7a3a));
-    exitBg.on('pointerout',  () => exitBg.setFillStyle(0x2a5a2a));
+    exitBg.on('pointerover', () => exitBg.setFillStyle(0xf0b030));
+    exitBg.on('pointerout',  () => exitBg.setFillStyle(0xe8a020));
     this.shopAdd(exitBg);
-    this.shopAdd(this.txt(width / 2, height - 14, 'CONTINUE →', { ...S_HUD, color: '#aaffaa' }, 0.5, 0.5).setDepth(12));
+    this.shopAdd(this.txt(width / 2, height - 28, 'CONTINUE →', { ...S_HUD, color: '#ffffff' }, 0.5, 0.5).setDepth(12));
   }
 
   private shopAdd(obj: Phaser.GameObjects.GameObject): void {
@@ -331,8 +597,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private closeShop(): void {
+    this.hideTooltip();
     for (const obj of this.shopObjs) obj.destroy();
     this.shopObjs = [];
+    for (const row of this.cellRects) for (const rect of row) rect.setInteractive();
     this.busy = false;
   }
 
@@ -362,28 +630,35 @@ export class GameScene extends Phaser.Scene {
   // ── End screens ──────────────────────────────────────────────────────────
 
   private showGameOver(): void {
+    this.cameras.main.shake(400, 0.008);
     const { width, height } = this.scale;
     const cx = Math.round(width / 2), cy = Math.round(height / 2);
-    this.add.rectangle(cx, cy, width, height, 0x000000, 0.82);
-    this.txt(cx, cy - 38, 'GAME OVER', { fontSize: '22px', color: '#ff4444', fontFamily: 'monospace' }, 0.5, 0.5);
-    this.txt(cx, cy - 10, `Round reached: ${this.state.round}`, { fontSize: '10px', color: '#cccccc', fontFamily: 'monospace' }, 0.5, 0.5);
-    const btn = this.add.rectangle(cx, cy + 22, 110, 18, 0x3d7a2b).setStrokeStyle(1, 0x8bc34a).setInteractive({ useHandCursor: true });
-    btn.on('pointerup', () => this.scene.restart());
+    this.add.rectangle(cx, cy, width, height, 0x000000).setDepth(50);
+    this.txt(cx, cy - 76, 'GAME OVER', { fontSize: '44px', color: '#ff4444', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(51);
+    this.txt(cx, cy - 20, `Round reached: ${this.state.round}`, { fontSize: '20px', color: '#cccccc', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(51);
+    const btn = this.add.rectangle(cx, cy + 44, 220, 36, 0x3d7a2b).setStrokeStyle(1, 0x8bc34a).setDepth(51).setInteractive({ useHandCursor: true });
+    btn.on('pointerup',   () => this.scene.start('TitleScene'));
     btn.on('pointerover', () => btn.setFillStyle(0x5a9a40));
     btn.on('pointerout',  () => btn.setFillStyle(0x3d7a2b));
-    this.txt(cx, cy + 22, '[ PLAY AGAIN ]', { fontSize: '10px', color: '#ccff99', fontFamily: 'monospace' }, 0.5, 0.5);
+    this.txt(cx, cy + 44, '[ PLAY AGAIN ]', { fontSize: '18px', color: '#ccff99', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(52);
   }
 
   private showVictory(): void {
     const { width, height } = this.scale;
     const cx = Math.round(width / 2), cy = Math.round(height / 2);
-    this.add.rectangle(cx, cy, width, height, 0x000000, 0.82);
-    this.txt(cx, cy - 40, 'VICTORY!', { fontSize: '22px', color: '#ffee44', fontFamily: 'monospace' }, 0.5, 0.5);
-    this.txt(cx, cy - 14, `${this.state.round - 1} rounds completed!`, { fontSize: '10px', color: '#cccccc', fontFamily: 'monospace' }, 0.5, 0.5);
-    const btn = this.add.rectangle(cx, cy + 20, 110, 18, 0x2a5a8a).setStrokeStyle(1, 0x4a8abc).setInteractive({ useHandCursor: true });
-    btn.on('pointerup', () => this.scene.restart());
+    // White flash before overlay
+    const flash = this.add.rectangle(cx, cy, width, height, 0xffffff, 0).setDepth(49);
+    this.tweens.add({
+      targets: flash, alpha: 0.4, duration: 250, ease: 'Power2',
+      yoyo: true, onComplete: () => flash.destroy(),
+    });
+    this.add.rectangle(cx, cy, width, height, 0x000000).setDepth(50);
+    this.txt(cx, cy - 80, 'VICTORY!', { fontSize: '44px', color: '#ffee44', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(51);
+    this.txt(cx, cy - 28, `${this.state.round - 1} rounds completed!`, { fontSize: '20px', color: '#cccccc', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(51);
+    const btn = this.add.rectangle(cx, cy + 40, 220, 36, 0x2a5a8a).setStrokeStyle(1, 0x4a8abc).setDepth(51).setInteractive({ useHandCursor: true });
+    btn.on('pointerup',   () => this.scene.start('TitleScene'));
     btn.on('pointerover', () => btn.setFillStyle(0x3a6aaa));
     btn.on('pointerout',  () => btn.setFillStyle(0x2a5a8a));
-    this.txt(cx, cy + 20, '[ PLAY AGAIN ]', { fontSize: '10px', color: '#aaddff', fontFamily: 'monospace' }, 0.5, 0.5);
+    this.txt(cx, cy + 40, '[ PLAY AGAIN ]', { fontSize: '18px', color: '#aaddff', fontFamily: 'Silkscreen' }, 0.5, 0.5).setDepth(52);
   }
 }

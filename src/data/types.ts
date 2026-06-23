@@ -30,6 +30,7 @@ export interface SpriteRef {
 export interface GameSymbol {
   id: string;
   name: string;
+  description: string;
   spriteRef: SpriteRef;
   rarity: Rarity;
   baseValue: number;

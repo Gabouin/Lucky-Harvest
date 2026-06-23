@@ -104,4 +104,45 @@ describe('resolve', () => {
     const resultR1 = resolve(grid, R1);
     expect(resultR1.events.find(e => e.type === 'produce')).toBeUndefined();
   });
+
+  it('Canard à la manche 3 → produit un Oeuf', () => {
+    const grid = makeGrid(withCells([[0, 0, 'canard']]));
+    const result = resolve(grid, { round: 3 });
+    expect(result.events.find(e => e.type === 'produce')).toMatchObject({ type: 'produce', symbolId: 'oeuf' });
+    expect(result.producedSymbolIds).toContain('oeuf');
+    expect(resolve(grid, R1).events.find(e => e.type === 'produce')).toBeUndefined();
+  });
+
+  it('Oie à la manche 4 → produit une Plume', () => {
+    const grid = makeGrid(withCells([[0, 0, 'oie']]));
+    const result = resolve(grid, { round: 4 });
+    expect(result.events.find(e => e.type === 'produce')).toMatchObject({ type: 'produce', symbolId: 'plume' });
+    expect(result.producedSymbolIds).toContain('plume');
+    expect(resolve(grid, R1).events.find(e => e.type === 'produce')).toBeUndefined();
+  });
+
+  it('Slime adjacent à une culture → culture détruite', () => {
+    const grid = makeGrid(withCells([[0, 0, 'slime'], [0, 1, 'patate']]));
+    const result = resolve(grid, R1);
+    expect(result.events[0]).toMatchObject({ type: 'destroy', symbolId: 'patate' });
+    expect(result.events.find(e => e.type === 'gain' && 'sourceId' in e && e.sourceId === 'patate')).toBeUndefined();
+    expect(result.totalCoins).toBe(6);
+  });
+
+  it('Squelette adjacent à un animal → animal détruit', () => {
+    const grid = makeGrid(withCells([[0, 0, 'squelette'], [0, 1, 'poule']]));
+    const result = resolve(grid, R1);
+    expect(result.events[0]).toMatchObject({ type: 'destroy', symbolId: 'poule' });
+    expect(result.events.find(e => e.type === 'gain' && 'sourceId' in e && e.sourceId === 'poule')).toBeUndefined();
+    expect(result.totalCoins).toBe(7);
+  });
+
+  it('Berger adjacent à 2 animaux → +6 (2 × 3)', () => {
+    // Berger en (0,0), Poule en (0,1) et (1,0)
+    const grid = makeGrid(withCells([[0, 0, 'berger'], [0, 1, 'poule'], [1, 0, 'poule']]));
+    const result = resolve(grid, R1);
+    const bergerGain = result.events.find(e => e.type === 'gain' && 'sourceId' in e && e.sourceId === 'berger');
+    expect(bergerGain).toMatchObject({ type: 'gain', amount: 7 }); // 1 base + 6 bonus
+    expect(result.totalCoins).toBe(11); // Berger(7) + Poule(2) + Poule(2)
+  });
 });

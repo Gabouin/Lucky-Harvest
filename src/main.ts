@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
-import { GameScene } from './scenes/GameScene';
+import { TitleScene }     from './scenes/TitleScene';
+import { HowToPlayScene } from './scenes/HowToPlayScene';
+import { GameScene }      from './scenes/GameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  backgroundColor: '#1a1a2e',
+  backgroundColor: '#34580a',
   parent: 'game',
   pixelArt: true,
   render: {
@@ -15,10 +17,10 @@ const config: Phaser.Types.Core.GameConfig = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 480,
-    height: 270,
+    width: 960,
+    height: 540,
   },
-  scene: [GameScene],
+  scene: [TitleScene, HowToPlayScene, GameScene],
 };
 
 new Phaser.Game(config);
