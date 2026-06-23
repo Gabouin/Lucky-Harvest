@@ -9,9 +9,11 @@ symboles entre les manches (roguelike). Inspiration mécanique : Luck Be a Landl
 
 ## Stack
 
-- Phaser 3 + TypeScript + Vite
+- Phaser 3.88 + TypeScript strict + Vite 8
+- Canvas 960×540, `image-rendering: pixelated`
 - Cible : build web HTML5 (`vite build` → dist/), jouable dans le navigateur sur itch.io
-- Assets : pack pixel "Cozy Valley" (16x16, CC BY 4.0) dans src/assets/
+- Assets : pack pixel "Cozy Valley Premium 1.3" + "CozyTowns v1" dans src/assets/
+- Police : Silkscreen (Google Fonts)
 
 ## Architecture — RÈGLE D'OR
 
@@ -27,9 +29,9 @@ Séparer strictement DONNÉES et LOGIQUE.
 
 - src/data/ → définitions des symboles, config (quotas, raretés)
 - src/engine/ → moteur de résolution (pur, headless, testable)
-- src/scenes/ → scènes Phaser (jeu, boutique, titre, game over)
-- src/ui/ → affichage (grille, compteur, tooltips)
-- src/assets/ → spritesheets Cozy Valley + audio
+- src/scenes/ → TitleScene, GameScene, HowToPlayScene (+ GameOver à venir)
+- src/ui/ → removeWhiteBackground.ts (BFS flood-fill depuis les bords)
+- src/assets/ → spritesheets Cozy Valley + CozyTowns + ui/ (boutons dessinés à la main)
 - tests/ → tests du moteur
 
 ## Boucle de jeu
@@ -50,12 +52,46 @@ ou retirer un symbole) → le quota augmente → manche suivante. Game over si l
 - Tourne sur Windows, navigateur, clavier/souris uniquement.
 - Aucun backend ni dépendance réseau pour jouer (tout tourne côté client).
 
+## Système de coordonnées grille (GameScene)
+
+- `CELL = 96`, `GRID_PX = GRID_SIZE * CELL` (384px), `GRID_IMG_PX = GRID_PX + 176` (560px)
+- `gridContainer` positionné au **centre** de la grille (pivot correct pour le spin)
+- `gridOriginX/Y` = `-GRID_PX/2 + offset` en LOCAL au container
+- `GRID_IMG_DY = 22` : décale l'image de grille vers le bas sans bouger les cases
+- `GRID_CELLS_DX = 12` : décale les cases vers la droite sans bouger l'image
+- `flashCell` ajoute ses rects au container (coords locales)
+- `emitCoinParticles` convertit en world via `gridContainer.x + gridOriginX + ...`
+- `setCrop` Phaser 3 : l'origine est calculée sur le **frame complet**, pas sur le crop
+
+## Assets UI
+
+- Boutons dessinés à la main, fond blanc supprimé via `removeWhiteBackground()` (BFS flood-fill)
+- Appelé dans `create()` de chaque scène avant tout rendu
+- Clés : `btn-spin`, `btn-play`, `btn-buy`, `btn-htp`, `grid-full`, `grid-shop`, `btn-continue`
+
+## Arbres (toutes les scènes)
+
+- `setCrop(0, 0, 32, 48)` — coupe le bas du sprite (supprime le bout de tronc)
+- `setScale(4).setOrigin(0.5, 1)`
+- Positions calibrées avec `#debug` overlay (sliders X/Y + "Copy coords")
+- Chênes : (151,331), (238,308), (295,366) — Cerises : (791,421), (870,439), (960,390)
+
+## Debug overlay (#debug)
+
+- TitleScene : sliders pour barn + tous les arbres (`BgRefs`)
+- GameScene : sliders pour les arbres uniquement (`TreeRefs`)
+- Accès : ajouter `#debug` à l'URL, bouton "Copy coords" pour exporter JSON
+
 ## État d'avancement (à mettre à jour à chaque session)
 
 - [x] Setup projet + rendu pixel + grille vide 4x4
 - [x] Moteur de résolution + 12 symboles starter (testé headless)
 - [x] Boucle jouable de bout en bout (MVP + boutique + victoire)
+- [x] TitleScene + HowToPlayScene avec décors complets
+- [x] Spin de grille (container Phaser, pivot centré)
+- [x] Assets UI dessinés à la main, fond blanc supprimé
+- [x] Arbres avec troncs, positions calibrées
 - [ ] Contenu (≈35 symboles, raretés, effets temporels, retrait en boutique)
-- [ ] Juice + écrans (titre, game over)
-- [ ] Audio + mini-tutoriel + équilibrage
+- [ ] Écran Game Over
+- [ ] Audio + équilibrage
 - [ ] Build + page itch + soumission

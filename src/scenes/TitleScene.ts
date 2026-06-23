@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { removeWhiteBackground } from '../ui/removeWhiteBackground';
 
 const CV = 'CozyValley_Premium_1.3/CozyValley_Premium_1.3';
 const CT = 'CozyTowns_v1';
@@ -32,12 +33,12 @@ function drawBackground(scene: Phaser.Scene): BgRefs {
   scene.add.rectangle(W / 2, H - H / 6, W, H / 3, 0x1a3a0e).setDepth(-2);
   const barn = scene.add.image(0, H - 50, 'barn').setScale(3).setOrigin(0, 1).setDepth(-1);
   scene.add.image(W - 10, H - 50, 'house').setCrop(0, 0, 96, 96).setScale(2.5).setOrigin(1, 1).setDepth(-1);
-  const oak1 = scene.add.image(151, 403, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  const oak2 = scene.add.image(238, 390, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  const oak3 = scene.add.image(295, 421, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  const ch1  = scene.add.image(791, 421, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  const ch2  = scene.add.image(870, 439, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  const ch3  = scene.add.image(960, 390, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const oak1 = scene.add.image(151, 331, 'tree_oak').setCrop(0, 0, 32, 48).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const oak2 = scene.add.image(238, 308, 'tree_oak').setCrop(0, 0, 32, 48).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const oak3 = scene.add.image(295, 366, 'tree_oak').setCrop(0, 0, 32, 48).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const ch1  = scene.add.image(791, 421, 'tree_cherry').setCrop(0, 0, 32, 48).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const ch2  = scene.add.image(870, 439, 'tree_cherry').setCrop(0, 0, 32, 48).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  const ch3  = scene.add.image(960, 390, 'tree_cherry').setCrop(0, 0, 32, 48).setScale(4).setOrigin(0.5, 1).setDepth(-1);
   const flDefs: [number, number][] = [
     [70,     0], [160,   16], [255,   32], [340,   48],
     [W-340, 32], [W-230, 16], [W-130,  0], [W-50,  48],
@@ -143,6 +144,13 @@ export class TitleScene extends Phaser.Scene {
     this.load.image('fence_seg',   `${CV}/Tilesets/Woodenfence.png`);
     this.load.image('flowers',     `${CV}/Tilesets/Flowers.png`);
     this.load.image('house',       `${CT}/Housing/Exterior/Houses.png`);
+    this.load.image('btn-spin',  'ui/spin.png');
+    this.load.image('btn-play',  'ui/play.png');
+    this.load.image('btn-buy',   'ui/buy.png');
+    this.load.image('btn-htp',   'ui/howtoplay.png');
+    this.load.image('grid-full',     'ui/fullgrid.png');
+    this.load.image('grid-shop',     'ui/shopgrid.png');
+    this.load.image('btn-continue',  'ui/continue.png');
   }
 
   create(): void {
@@ -150,6 +158,8 @@ export class TitleScene extends Phaser.Scene {
     const cx = width / 2;
     const cy = height / 2;
 
+    for (const k of ['btn-spin','btn-play','btn-buy','btn-htp','grid-full','grid-shop','btn-continue'])
+      removeWhiteBackground(this, k);
     const bgRefs = drawBackground(this);
     if (window.location.hash === '#debug') buildDebugOverlay(this, bgRefs);
 
@@ -158,20 +168,22 @@ export class TitleScene extends Phaser.Scene {
     txt(this, cx, cy - 40,  'Spin the grid · build synergies · pay the rent',
       { ...S, fontSize: '16px', color: '#8888aa' });
 
-    const playBg = this.add.rectangle(cx, cy + 40, 220, 48, 0x3d7a2b)
-      .setStrokeStyle(2, 0x8bc34a)
+    const playBtn = this.add.image(cx, cy + 40, 'btn-play')
+      .setDisplaySize(200, 75)
+      .setOrigin(0.5, 0.5)
       .setInteractive({ useHandCursor: true });
-    playBg.on('pointerup',   () => this.scene.start('GameScene'));
-    playBg.on('pointerover', () => playBg.setFillStyle(0x5a9a40));
-    playBg.on('pointerout',  () => playBg.setFillStyle(0x3d7a2b));
-    txt(this, cx, cy + 40, 'PLAY', { ...S, fontSize: '26px', color: '#ccff99' });
+    playBtn.on('pointerdown', () => playBtn.setAlpha(0.7));
+    playBtn.on('pointerup',   () => { playBtn.setAlpha(1); this.scene.start('GameScene'); });
+    playBtn.on('pointerover', () => playBtn.setAlpha(0.85));
+    playBtn.on('pointerout',  () => playBtn.setAlpha(1));
 
-    const helpBg = this.add.rectangle(cx, cy + 118, 260, 44, 0x1e3a5a)
-      .setStrokeStyle(2, 0x4a7aaa)
+    const helpBtn = this.add.image(cx, cy + 118, 'btn-htp')
+      .setDisplaySize(280, 70)
+      .setOrigin(0.5, 0.5)
       .setInteractive({ useHandCursor: true });
-    helpBg.on('pointerup',   () => this.scene.start('HowToPlayScene'));
-    helpBg.on('pointerover', () => helpBg.setFillStyle(0x2a4a6a));
-    helpBg.on('pointerout',  () => helpBg.setFillStyle(0x1e3a5a));
-    txt(this, cx, cy + 118, 'HOW TO PLAY', { ...S, fontSize: '20px', color: '#aaddff' });
+    helpBtn.on('pointerdown', () => helpBtn.setAlpha(0.7));
+    helpBtn.on('pointerup',   () => { helpBtn.setAlpha(1); this.scene.start('HowToPlayScene'); });
+    helpBtn.on('pointerover', () => helpBtn.setAlpha(0.85));
+    helpBtn.on('pointerout',  () => helpBtn.setAlpha(1));
   }
 }
