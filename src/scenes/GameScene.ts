@@ -14,6 +14,7 @@ const GRID_PX = GRID_SIZE * CELL; // 384px
 const OY = 48;
 
 const CV = 'CozyValley_Premium_1.3/CozyValley_Premium_1.3';
+const CT = 'CozyTowns_v1';
 
 const COLOR_EMPTY    = 0x2d1b0e;
 const COLOR_OCCUPIED = 0x3d2a10;
@@ -31,15 +32,16 @@ type SynergyPair = { srcRow: number; srcCol: number; tgtRow: number; tgtCol: num
 
 function drawBackground(scene: Phaser.Scene): void {
   const { width: W, height: H } = scene.scale;
-  scene.add.rectangle(W / 2, H / 2, W, H, 0x34580a).setDepth(-1);
-  scene.add.rectangle(W / 2, H - 27, W, 55, 0x264506).setDepth(-1);
-  scene.add.image(-30, H - 286, 'barn').setCrop(0, 0, 64, 64).setScale(4).setOrigin(0, 0).setDepth(-1);
-  scene.add.image(30,      H - 220, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  scene.add.image(130,     H - 220, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  scene.add.image(215,     H - 220, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  scene.add.image(W - 340, H - 220, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  scene.add.image(W - 230, H - 220, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
-  scene.add.image(W - 120, H - 220, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.rectangle(W / 2, H / 2, W, H, 0x2d5a1b).setDepth(-2);
+  scene.add.rectangle(W / 2, H - H / 6, W, H / 3, 0x1a3a0e).setDepth(-2);
+  scene.add.image(0, H - 50, 'barn').setScale(3).setOrigin(0, 1).setDepth(-1);
+  scene.add.image(W - 10, H - 50, 'house').setCrop(0, 0, 96, 96).setScale(2.5).setOrigin(1, 1).setDepth(-1);
+  scene.add.image(151, 403, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(238, 390, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(295, 421, 'tree_oak').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(791, 421, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(870, 439, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
+  scene.add.image(960, 390, 'tree_cherry').setCrop(0, 0, 32, 32).setScale(4).setOrigin(0.5, 1).setDepth(-1);
   const flDefs: [number, number][] = [
     [70,     0], [160,   16], [255,   32], [340,   48],
     [W-340, 32], [W-230, 16], [W-130,  0], [W-50,  48],
@@ -94,6 +96,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image(     'barn',        `${CV}/Tilesets/Barn.png`);
     this.load.image('fence_seg', `${CV}/Tilesets/Woodenfence.png`);
     this.load.image('flowers',   `${CV}/Tilesets/Flowers.png`);
+    this.load.image('house',     `${CT}/Housing/Exterior/Houses.png`);
   }
 
   create(): void {
